@@ -58,14 +58,33 @@ Celery ingest task — real Postgres storage where the old system had none. See
   config-key prefix resolution gotcha that silently no-op'd `task_always_eager`) — see
   [interview module 03](interview/03-data-modelling-and-the-orm.md)
 
-## Step 4 — Strategy engine
+## Step 4 — Strategy engine ✅ done
 
-- Pure indicator/operator functions — no Django imports, property-testable
+Pure indicator/operator functions, a `pydantic`-validated `Strategy.config`, and an idempotent
+evaluation task that writes an audit row every run — deliberately not carrying forward the old
+system's three overlapping indicator dispatchers or its undocumented edge-triggered comparison
+operators. Signal creation stays out of scope; that's step 5. See
+[ADR 0008](adr/0008-strategy-config-validation.md).
+
 - ~~The TA-Lib decision (bundled wheels vs a pure-Python implementation) gets its own ADR~~ done
   early — [ADR 0006](adr/0006-ta-lib-packaging.md): `ta-lib` installs as a prebuilt wheel with the
   C library bundled in, no compiler needed on any target platform, verified in `tests/test_talib.py`.
-  The indicator/operator layer itself is still this step's work, not done yet.
-- `Strategy` model with a validated JSON config; evaluation writes an audit row every run
+- `apps/strategy/{indicators,operators,schema,engine}.py` — zero Django imports: a typed `dict`
+  registry for `SMA`/`EMA`/`RSI`/`MACD` (replacing the old system's two overlapping dispatchers),
+  explicit level (`gt`/`lt`/`eq`) vs. edge (`crosses_above`/`crosses_below`) operators (replacing
+  its undocumented behavior where a level-looking config key silently also checked the previous
+  candle), and a `pydantic` `StrategyConfig`/`Condition` schema (`extra="forbid"`, AND-chained
+  conditions matching the old system's *actual*, if undocumented, semantics)
+- `Strategy.save()` always calls `full_clean()` — the one model in this codebase that pays that
+  cost on every save, because an invalid config would otherwise silently break every future
+  evaluation run rather than fail at the point of authorship
+- `StrategyEvaluation.UniqueConstraint(strategy, candle_open_time)` + `bulk_create(...,
+  ignore_conflicts=True)` — the same redelivery-safe idiom `Candle`'s constraint already
+  established, reused rather than reinvented; a new `strategy` Celery queue, beat-scheduled a few
+  minutes after each interval's `market-ingest-*` entry so the candle it needs has landed first
+- 32 new tests (21 pure — no `django_db`, no `integration` marker — plus 11 integration, including
+  the redelivery-idempotency case); manually verified end-to-end against the real `BTCUSDT`
+  candles ingested in step 3 — see [interview module 04](interview/04-strategy-engine.md)
 
 ## Step 5 — Signals and notifications
 

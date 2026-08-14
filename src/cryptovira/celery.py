@@ -44,6 +44,7 @@ app.conf.update(
     task_default_queue="default",
     task_routes={
         "cryptovira.apps.market.tasks.*": {"queue": "market"},
+        "cryptovira.apps.strategy.tasks.*": {"queue": "strategy"},
         "cryptovira.apps.brokers.tasks.*": {"queue": "orders"},
     },
     # One entry per interval *cadence*, not per (currency, interval) pair — each tick fans out
@@ -89,6 +90,50 @@ app.conf.update(
         "market-ingest-1w": {
             "task": "cryptovira.apps.market.tasks.fan_out_ingest_candles",
             "schedule": crontab(minute=5, hour=0, day_of_week=1),
+            "kwargs": {"interval": "1w"},
+        },
+        # Strategy evaluation needs that interval's candle to have already landed. Sub-15-minute
+        # tiers reuse ingest's own cadence unchanged (no headroom at that granularity, and
+        # evaluate_strategy tolerates evaluating a slightly-stale "latest candle" rather than
+        # erroring); 30m and up get ingest's offset +3 minutes.
+        "strategy-evaluate-1m": {
+            "task": "cryptovira.apps.strategy.tasks.fan_out_evaluate_strategies",
+            "schedule": crontab(minute="*"),
+            "kwargs": {"interval": "1m"},
+        },
+        "strategy-evaluate-5m": {
+            "task": "cryptovira.apps.strategy.tasks.fan_out_evaluate_strategies",
+            "schedule": crontab(minute="*/5"),
+            "kwargs": {"interval": "5m"},
+        },
+        "strategy-evaluate-15m": {
+            "task": "cryptovira.apps.strategy.tasks.fan_out_evaluate_strategies",
+            "schedule": crontab(minute="*/15"),
+            "kwargs": {"interval": "15m"},
+        },
+        "strategy-evaluate-30m": {
+            "task": "cryptovira.apps.strategy.tasks.fan_out_evaluate_strategies",
+            "schedule": crontab(minute="8,38"),
+            "kwargs": {"interval": "30m"},
+        },
+        "strategy-evaluate-1h": {
+            "task": "cryptovira.apps.strategy.tasks.fan_out_evaluate_strategies",
+            "schedule": crontab(minute=8),
+            "kwargs": {"interval": "1h"},
+        },
+        "strategy-evaluate-4h": {
+            "task": "cryptovira.apps.strategy.tasks.fan_out_evaluate_strategies",
+            "schedule": crontab(minute=8, hour="*/4"),
+            "kwargs": {"interval": "4h"},
+        },
+        "strategy-evaluate-1d": {
+            "task": "cryptovira.apps.strategy.tasks.fan_out_evaluate_strategies",
+            "schedule": crontab(minute=8, hour=0),
+            "kwargs": {"interval": "1d"},
+        },
+        "strategy-evaluate-1w": {
+            "task": "cryptovira.apps.strategy.tasks.fan_out_evaluate_strategies",
+            "schedule": crontab(minute=8, hour=0, day_of_week=1),
             "kwargs": {"interval": "1w"},
         },
     },

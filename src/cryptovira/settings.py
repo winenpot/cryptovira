@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "cryptovira.apps.common",
     "cryptovira.apps.accounts",
     "cryptovira.apps.market",
+    "cryptovira.apps.strategy",
 ]
 
 AUTH_USER_MODEL = "accounts.User"

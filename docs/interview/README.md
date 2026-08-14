@@ -12,7 +12,8 @@ same activity as understanding the code.
 | [01 — Foundations](01-foundations.md)                             | Step 1       | Packaging, config, containers, brokers, health checks, CI, typing        |
 | [02 — Accounts & JWT](02-accounts-and-jwt.md)                     | Step 2       | Custom user models, JWT vs sessions, permissions, throttling             |
 | [03 — Data modelling & the ORM](03-data-modelling-and-the-orm.md) | Step 3       | Abstract base models, DB idempotency, `on_delete`, `Protocol` interfaces |
-| 04 — Concurrency & correctness *(pending)*                        | Step 5–6     | Idempotency, retries, race conditions, isolation levels                  |
+| [04 — Strategy engine](04-strategy-engine.md)                     | Step 4       | Pure functions, pydantic-validated config, operator semantics, variance  |
+| 05 — Concurrency & correctness *(pending)*                        | Step 5–6     | Idempotency, retries, race conditions, isolation levels                  |
 
 ## How to use them
 
