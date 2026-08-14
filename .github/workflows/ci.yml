@@ -1,0 +1,140 @@
+# The whole pipeline: gates first (cheapest failure first), then the image.
+#
+#   static  — lint, format, types, Django checks. No services, ~30s.
+#   test    — unit + integration tests against real Postgres/RabbitMQ/Redis.
+#   image   — builds the deployable image and smoke-tests it; publishes only from main.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch cancels the previous run: CI minutes are for the current code.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ENVIRONMENT: ci
+  SECRET_KEY: ci-only-secret-not-used-for-anything-real
+  DJANGO_SETTINGS_MODULE: cryptovira.settings
+  UV_VERSION: "0.12.3"
+
+jobs:
+  static:
+    name: Lint, format & types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      # --frozen: fail if uv.lock and pyproject.toml disagree, rather than quietly re-resolving.
+      - run: uv sync --frozen
+      - run: uv run ruff check --output-format=github .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run manage.py check --fail-level WARNING
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: cryptovira
+          POSTGRES_PASSWORD: cryptovira
+          POSTGRES_DB: cryptovira
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cryptovira"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      rabbitmq:
+        image: rabbitmq:4
+        env:
+          RABBITMQ_DEFAULT_USER: cryptovira
+          RABBITMQ_DEFAULT_PASS: cryptovira
+        ports: ["5672:5672"]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q check_running"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cryptovira:cryptovira@localhost:5432/cryptovira
+      CELERY_BROKER_URL: amqp://cryptovira:cryptovira@localhost:5672//
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+      # Catches "model changed, migration forgotten" — needs a database for history checks.
+      - run: uv run manage.py makemigrations --check --dry-run
+      - run: uv run pytest --junitxml=reports/junit.xml --cov-report=xml:reports/coverage.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: reports/
+
+  image:
+    name: Build image
+    runs-on: ubuntu-latest
+    needs: [static, test]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha,format=long
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          # Pull requests build but never publish — no untrusted push to the registry.
+          push: ${{ github.event_name == 'push' }}
+          load: ${{ github.event_name != 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the built image
+        if: github.event_name != 'push'
+        run: |
+          tag=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          docker run --rm --entrypoint python "$tag" -c "import cryptovira; print('image ok')"

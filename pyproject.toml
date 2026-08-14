@@ -1,0 +1,156 @@
+[project]
+name = "cryptovira"
+version = "0.1.0"
+description = "Crypto trading-signal platform: strategy evaluation, signal fan-out, and brokered execution."
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+classifiers = ["Private :: Do Not Upload"]
+
+dependencies = [
+    "django==6.1.*",
+    "djangorestframework>=3.18",
+    "drf-spectacular>=0.30",
+    "psycopg[binary,pool]>=3.3",
+    "dj-database-url>=3.1",
+    "pydantic-settings>=2.15",
+    # Beat schedule lives in code (see src/cryptovira/celery.py), not in django-celery-beat:
+    # that package still pins django<6.1, and a version-controlled schedule beats a DB one.
+    "celery[amqp]>=5.6",
+    "django-celery-results>=2.6",
+    "redis>=8.1",
+    "structlog>=26.1",
+    "django-structlog>=9.1",
+    "whitenoise>=6.12",
+    # gunicorn supervises the processes; uvicorn-worker is the ASGI worker class
+    # (uvicorn's own `uvicorn.workers` shim is deprecated).
+    "gunicorn>=26.0",
+    "uvicorn[standard]>=0.52",
+    "uvicorn-worker>=0.4",
+]
+
+[project.optional-dependencies]
+# Kept optional so a plain `uv sync` never depends on native build toolchains.
+observability = ["sentry-sdk[django]>=2.68"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-django>=4.14",
+    "pytest-cov>=7.1",
+    "pytest-randomly>=4.0",
+    "ruff>=0.16",
+    "mypy>=2.3",
+    "django-stubs[compatible-mypy]>=6.1",
+    "djangorestframework-stubs>=3.18",
+    "pre-commit>=4.6",
+    "model-bakery>=1.20",
+    "httpx>=0.28",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cryptovira"]
+
+[tool.uv]
+package = true
+default-groups = ["dev"]
+
+# ---------------------------------------------------------------- ruff (lint + format)
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["old-version", "**/migrations/*"]
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "BLE",  # no bare `except Exception` without a stated reason
+    "C4",   # comprehensions
+    "DJ",   # flake8-django
+    "S",    # bandit
+    "T20",  # no print
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+    "ARG",  # unused arguments
+    "PTH",  # use pathlib
+    "TID",  # tidy imports
+]
+ignore = [
+    "S101",  # assert: pytest uses it
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "ARG001", "ARG002"]
+"src/cryptovira/settings.py" = ["F405", "F403"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cryptovira"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.14"
+files = ["src", "tests"]
+exclude = ["old-version/", "migrations/"]
+strict = true
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+warn_unreachable = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+# Third-party packages that ship no type information. Listed explicitly rather than via a
+# global `ignore_missing_imports`, so a new untyped dependency is a conscious decision.
+module = [
+    "celery.*",
+    "kombu.*",
+    "django_structlog.*",
+    "django_celery_results.*",
+    "dj_database_url.*",
+]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "cryptovira.settings"
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "cryptovira.settings"
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--cov=cryptovira",
+    "--cov-report=term-missing:skip-covered",
+]
+markers = [
+    "integration: needs Postgres/RabbitMQ running (deselect with -m 'not integration')",
+]
+filterwarnings = [
+    # A warning that reaches CI is a bug that has not been filed yet.
+    "error",
+    # …except this one: WhiteNoise warns that STATIC_ROOT is empty, which is simply true
+    # until `collectstatic` runs as part of the image build.
+    "ignore:No directory at:UserWarning",
+]
+
+[tool.coverage.run]
+source = ["src/cryptovira"]
+omit = ["*/migrations/*", "*/asgi.py", "*/wsgi.py"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

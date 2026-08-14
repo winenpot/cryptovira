@@ -1,0 +1,121 @@
+# Local development stack. One file — environment differences are env vars, not extra
+# compose overlays (the old project needed four of them and they had already drifted apart).
+#
+#   docker compose up -d db rabbitmq redis   # infrastructure only, app runs on the host
+#   docker compose up --build                # everything in containers
+#   docker compose run --rm web migrate      # one-off management commands
+
+name: cryptovira
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: cryptovira:dev
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://cryptovira:cryptovira@db:5432/cryptovira
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: amqp://cryptovira:cryptovira@rabbitmq:5672//
+  volumes:
+    - ./src:/app/src:ro          # edit on the host, reload in the container
+    - ./manage.py:/app/manage.py:ro
+  depends_on:
+    db:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  db:
+    # Pinned to the major only: `postgres:18.6` is not a published tag (the newest 18.x minor at
+    # the time of writing is lower). Pin the exact minor here once you have confirmed it with
+    # `docker pull postgres:18.<n>` — reproducibility beats "whatever 18 resolves to today".
+    image: postgres:18
+    environment:
+      POSTGRES_USER: cryptovira
+      POSTGRES_PASSWORD: cryptovira
+      POSTGRES_DB: cryptovira
+      # Fail fast if the data directory was created with a different locale/encoding.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      # Postgres 18+ stores data in a major-version subdirectory (/var/lib/postgresql/18/docker)
+      # so that `pg_upgrade --link` works without crossing a mount boundary. Mount the parent —
+      # mounting the old /var/lib/postgresql/data path makes the container refuse to start.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cryptovira -d cryptovira"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: cryptovira
+      RABBITMQ_DEFAULT_PASS: cryptovira
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management UI: http://localhost:15672
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+      - ./docker/rabbitmq/10-cryptovira.conf:/etc/rabbitmq/conf.d/10-cryptovira.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    # Cache only: no persistence, and evict rather than OOM.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    <<: *app
+    command: ["devserver"]
+    ports:
+      - "8000:8000"
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    healthcheck:
+      # CMD-SHELL, not CMD: the exec form runs no shell, so `$HOSTNAME` would be passed to
+      # celery literally and the ping would never match a node name.
+      test: ["CMD-SHELL", "celery -A cryptovira inspect ping -d celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  beat:
+    <<: *app
+    command: ["beat"]
+    # The image's HEALTHCHECK curls /healthz, which only exists in the web role — inherited
+    # unchanged it would mark beat unhealthy forever. Beat has nothing meaningful to probe
+    # (it consumes nothing and serves nothing); "is the process alive?" is what `restart`
+    # already covers, so the check is disabled rather than faked.
+    healthcheck:
+      disable: true
+
+volumes:
+  pgdata:
+  rabbitmqdata:

@@ -1,0 +1,28 @@
+# Keep the build context small and free of secrets. Everything the image needs is copied
+# explicitly in docker/Dockerfile.
+.git
+.github
+.venv
+old-version
+docs
+tests
+
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage*
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+staticfiles
+media
+*.sqlite3
+Dockerfile*
+compose*.yaml
