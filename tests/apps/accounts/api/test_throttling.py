@@ -6,7 +6,6 @@ separate scopes from the global anon rate.
 from __future__ import annotations
 
 import pytest
-from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -29,9 +28,10 @@ def test_login_endpoint_is_throttled_after_the_scoped_rate_is_exhausted(
     # The only way to actually change a rate at test time is to patch the throttle class's dict
     # directly, which is what this does.
     monkeypatch.setitem(LoginRateThrottle.THROTTLE_RATES, "login", "2/min")
-    # Throttle state lives in the cache, keyed by scope + client identity — clear it so an
-    # earlier test's counter (same IP, same process) can't leak into this one's budget.
-    cache.clear()
+    # No explicit cache.clear() needed here — the autouse `_clear_cache` fixture
+    # (tests/conftest.py) resets the real Redis cache before every test, which is exactly the
+    # isolation this test depends on: without it, an earlier test's login-scope counter could
+    # eat into this one's deliberately tiny 2/min budget.
     client = APIClient()
     bad_credentials = {"email": "nobody@example.com", "password": "wrong"}
 

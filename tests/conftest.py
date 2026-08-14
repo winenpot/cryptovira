@@ -9,8 +9,24 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+from django.core.cache import cache
 from django.test import Client
 from rest_framework.test import APIClient
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache() -> Iterator[None]:
+    """Reset the cache before every test.
+
+    CACHES["default"] is real Redis (settings.py) — deliberately the same backend production
+    uses, not a per-test-isolated in-memory stand-in. That realism has a cost: throttle counters
+    (api/throttles.py) and anything else cache-backed persist for the *whole* pytest session
+    unless something clears them. Without this fixture, enough accumulated `/token/` calls across
+    unrelated test files can legitimately trip the login throttle mid-suite — a real bug this
+    caught, order-dependent on pytest-randomly's seed, not a flaky test to retry away.
+    """
+    cache.clear()
+    yield
 
 
 @pytest.fixture

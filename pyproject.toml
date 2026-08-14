@@ -28,6 +28,8 @@ dependencies = [
     "gunicorn>=26.0",
     "uvicorn[standard]>=0.52",
     "uvicorn-worker>=0.4",
+    "ta-lib>=0.7.1",
+    "httpx>=0.28.1",
 ]
 
 [project.optional-dependencies]
@@ -46,7 +48,6 @@ dev = [
     "djangorestframework-stubs>=3.18",
     "pre-commit>=4.6",
     "model-bakery>=1.20",
-    "httpx>=0.28",
 ]
 
 [build-system]

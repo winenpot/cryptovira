@@ -13,3 +13,4 @@ add a `Superseded by` line to the old one.
 | [0003](0003-rabbitmq-as-broker.md)         | RabbitMQ as the Celery broker, Redis as cache | Accepted |
 | [0004](0004-single-settings-module.md)     | One settings module, typed env config        | Accepted |
 | [0005](0005-custom-user-model.md)          | Thin, email-based custom user model          | Accepted |
+| [0006](0006-ta-lib-packaging.md)           | TA-Lib via prebuilt wheels, no compile step  | Accepted |

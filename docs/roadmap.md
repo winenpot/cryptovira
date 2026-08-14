@@ -45,7 +45,10 @@ Everything Telegram/referral/payment-shaped from the old `User` model stays out 
 ## Step 4 — Strategy engine
 
 - Pure indicator/operator functions — no Django imports, property-testable
-- The TA-Lib decision (bundled wheels vs a pure-Python implementation) gets its own ADR
+- ~~The TA-Lib decision (bundled wheels vs a pure-Python implementation) gets its own ADR~~ done
+  early — [ADR 0006](adr/0006-ta-lib-packaging.md): `ta-lib` installs as a prebuilt wheel with the
+  C library bundled in, no compiler needed on any target platform, verified in `tests/test_talib.py`.
+  The indicator/operator layer itself is still this step's work, not done yet.
 - `Strategy` model with a validated JSON config; evaluation writes an audit row every run
 
 ## Step 5 — Signals and notifications
