@@ -36,11 +36,27 @@ Everything Telegram/referral/payment-shaped from the old `User` model stays out 
   refresh → logout, including that a *blacklisted refresh token* still leaves the already-issued
   *access token* valid until it expires — the concrete shape of "JWT revocation is hard")
 
-## Step 3 — Market data domain
+## Step 3 — Market data domain ✅ done
 
-- `Currency` / `Candle` models, timeframe handling, timezone-correct storage
-- An exchange client behind an interface (`MarketDataSource`), so tests never hit the network
-- Ingest task on the `market` queue, idempotent by `(symbol, interval, open_time)`
+`Currency`/`Candle` models, an exchange client behind a `Protocol` interface, and an idempotent
+Celery ingest task — real Postgres storage where the old system had none. See
+[ADR 0007](adr/0007-market-data-source-interface.md).
+
+- `Currency` (thin: symbol, name, `is_active`) and `Candle` (OHLCV as `Decimal`, UTC-aware
+  `open_time`/`close_time`); one canonical `Interval` enum replacing the old system's two
+  divergent timeframe representations
+- `Candle.UniqueConstraint(currency, interval, open_time)` is the actual idempotency mechanism —
+  `ingest_candles` writes via `bulk_create(..., ignore_conflicts=True)`, safe under Celery's
+  `task_acks_late` redelivery; `on_delete=PROTECT` keeps an accidental `Currency` delete from
+  silently erasing candle history
+- `MarketDataSource` (`typing.Protocol`, the first interface in this codebase), implemented by a
+  thin project-owned `httpx` client against Binance's public REST klines endpoint — no vendored
+  fork, no `python-binance` dependency
+- 13 new tests: model constraints, response-parsing against Binance's documented kline shape via
+  `httpx.MockTransport`, and task idempotency (redelivery produces no duplicate rows); along the
+  way, found and fixed a real bug in the shared `eager_celery` test fixture (a Celery
+  config-key prefix resolution gotcha that silently no-op'd `task_always_eager`) — see
+  [interview module 03](interview/03-data-modelling-and-the-orm.md)
 
 ## Step 4 — Strategy engine
 

@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     log_json: bool = True
     sentry_dsn: SecretStr | None = None
 
+    # --- market data -----------------------------------------------------------
+    #: A field, not a hardcoded constant in the source client, so tests/CI can point this at a
+    #: mock server and staging can point it at a testnet — without a code change either way.
+    market_data_base_url: str = "https://api.binance.com"
+    market_data_request_timeout_seconds: float = 10.0
+
     @property
     def is_production_like(self) -> bool:
         """True for environments that must never run with dev defaults."""

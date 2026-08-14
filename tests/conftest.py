@@ -44,12 +44,24 @@ def api_client() -> APIClient:
 
 @pytest.fixture
 def eager_celery() -> Iterator[None]:
-    """Run Celery tasks inline, so a test can assert on their effects without a worker."""
+    """Run Celery tasks inline, so a test can assert on their effects without a worker.
+
+    Reads and writes the *prefixed* key (``CELERY_TASK_ALWAYS_EAGER``), not the attribute form
+    (``conf.task_always_eager = True``). ``settings.py`` sets ``CELERY_TASK_ALWAYS_EAGER`` as a
+    real Django constant, which `config_from_object(..., namespace="CELERY")` loads into a
+    lower-priority "defaults" layer under that exact prefixed key; Celery's `ConfigurationView`
+    checks the prefixed key across *all* layers before ever trying the unprefixed one, so an
+    attribute-style override — written only to the unprefixed key — loses to that default and is
+    silently never seen. Writing the same prefixed key directly is what actually reaches the
+    layer the read path checks first. Without this, `.delay()` publishes to the real broker
+    instead of running inline, and a test asserting on task side effects just sees nothing —
+    no exception, no obvious clue.
+    """
     from celery import current_app
 
-    previous = current_app.conf.task_always_eager
-    current_app.conf.task_always_eager = True
+    previous = current_app.conf["CELERY_TASK_ALWAYS_EAGER"]
+    current_app.conf["CELERY_TASK_ALWAYS_EAGER"] = True
     try:
         yield
     finally:
-        current_app.conf.task_always_eager = previous
+        current_app.conf["CELERY_TASK_ALWAYS_EAGER"] = previous
