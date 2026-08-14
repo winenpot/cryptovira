@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     market_data_base_url: str = "https://api.binance.com"
     market_data_request_timeout_seconds: float = 10.0
 
+    # --- notifications -----------------------------------------------------------
+    #: Optional (unlike secret_key) — dev/CI shouldn't need a real bot token just to run the
+    #: test suite or `runserver`. `TelegramChannel` raises a clear, named error if `send()` is
+    #: actually invoked with no token configured, rather than a confusing auth failure from
+    #: Telegram's API.
+    telegram_bot_token: SecretStr | None = None
+    telegram_api_base_url: str = "https://api.telegram.org"
+    telegram_request_timeout_seconds: float = 10.0
+    webhook_request_timeout_seconds: float = 10.0
+
     @property
     def is_production_like(self) -> bool:
         """True for environments that must never run with dev defaults."""

@@ -86,11 +86,61 @@ operators. Signal creation stays out of scope; that's step 5. See
   the redelivery-idempotency case); manually verified end-to-end against the real `BTCUSDT`
   candles ingested in step 3 — see [interview module 04](interview/04-strategy-engine.md)
 
-## Step 5 — Signals and notifications
+## Step 5 — Signals and notifications ✅ done
 
-- `Signal` creation inside a transaction, idempotent under task redelivery
-- Notification fan-out per plan tier, retried with backoff, dead-lettered on permanent failure
-- Templated messages, per-channel adapters (Telegram, SMS, webhook)
+`Signal` creation reuses `StrategyEvaluation`'s own idempotency rather than duplicating it,
+`transaction.on_commit` gates notification dispatch on the row actually being durable, and
+`send_notification` is the first task needing Celery's task-level retry on top of the
+broker-level redelivery every task since step 3 already had. See
+[ADR 0009](adr/0009-signal-idempotency-and-notification-delivery.md).
+
+- `Signal.evaluation` is a `OneToOneField(StrategyEvaluation)` — inherits ADR 0008's
+  `(strategy, candle_open_time)` uniqueness transitively instead of a second constraint;
+  `record_signal()` (a plain function, not a task, called inline from `evaluate_strategy`) wraps
+  creation in its own `atomic()` savepoint and always calls `transaction.on_commit(...)` after —
+  including on the "already recorded" redelivery path, closing a silent-no-dispatch gap a naive
+  version would have
+- `NotificationRecipient` (Telegram/webhook destination per user) is the model ADR 0005 deferred
+  all the way back in step 2; `NotificationDelivery` is the first model here where
+  `TimestampedModel`'s `updated_at` reflects the system itself mutating a row across retries, not
+  a human editing config
+- `send_notification`: explicit `bind=True` + `self.retry(...)`, not `autoretry_for` — deliberately
+  legible over automatic. Manual verification against the real running stack caught a genuine bug
+  this shape invites: `retry_backoff`/`retry_backoff_max`/`retry_jitter` are only auto-applied by
+  `autoretry_for`'s wrapper, so the first version silently retried at a flat 180s every time;
+  fixed by computing the countdown with Celery's own `get_exponential_backoff_interval`, the same
+  function `autoretry_for` calls internally. Once `max_retries` is exhausted, writes
+  `NotificationDelivery.status = FAILED` — a Postgres-visible, admin-actionable dead letter,
+  not a RabbitMQ DLX (a named, deliberate scope cut, not an oversight)
+- "Fan-out per plan tier" honestly degrades to "the strategy's owning user" — no `Plan` model
+  exists yet (step 7); `TelegramChannel`/`WebhookChannel` are thin `httpx` clients reusing the
+  ADR-0007 precedent, `SMS` deliberately has no channel value (no chosen provider, would be dead
+  code)
+- 21 new tests (channels' request/response shape via `httpx.MockTransport`, `record_signal`'s
+  transaction/idempotency behavior via pytest-django's `django_capture_on_commit_callbacks` — a
+  real testing gotcha in its own right, since `on_commit` callbacks never fire in a normal rolled-
+  back test transaction — and `send_notification`'s retry-then-dead-letter path); manually
+  verified end-to-end against the real `BTCUSDT` strategy from steps 3–4, including a real webhook
+  delivery and the corrected exponential backoff — see
+  [interview module 05](interview/05-concurrency-and-correctness.md)
+
+## Step 5.5 — Backtesting
+
+Not in the original 8-step plan — noticed missing during step 5 planning.
+`old-version/core/apps/market/models/backtest.py` is a real, substantial old feature (a `Backtest`
+model, a dedicated Celery task in `brokers/binance/tasks/backtest.py`, admin, forms, templates)
+with no slot anywhere above. Depends only on steps 3–4 (`Candle` history, the strategy evaluation
+engine), not on broker execution/billing/production hardening — slotted in here, right after
+signals/notifications, rather than at the end, since it's ready to build as soon as step 5 lands
+and there's no reason to make it wait behind steps 6–8. Numbered 5.5 rather than renumbering
+steps 6–8, which ADRs/interview modules already reference by number.
+
+- Replay a `Strategy` against historical `Candle` data over a date range, reusing
+  `apps/strategy/engine.py` unchanged (it already takes a plain `numpy` array — a backtest is just
+  a different caller than `evaluate_strategy`, not a reason to change the pure layer)
+- Progress tracking and a results summary (win rate, total R/R) — old system's `Backtest.progress`/
+  `total_r_r`/`total_position_count` fields are the behavioral spec, not the schema to copy
+  verbatim (no CSV/image report generation carried forward without a concrete consumer)
 
 ## Step 6 — Broker execution
 

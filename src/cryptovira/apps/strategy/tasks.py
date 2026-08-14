@@ -7,6 +7,11 @@
 - `evaluate_strategy` writes with `bulk_create([...], ignore_conflicts=True)`, relying on
   `StrategyEvaluation`'s `UniqueConstraint(strategy, candle_open_time)` — the same
   redelivery-safe idiom `ingest_candles` already established, reused rather than reinvented.
+  `bulk_create(ignore_conflicts=True)` doesn't report insert-vs-skip, so on a triggered
+  evaluation it re-fetches the canonical row and hands *that* (not the locally-computed
+  `triggered` value) to `apps/signals/services.py::record_signal` — Step 5's Signal-creation
+  entry point, called inline so it shares this task's process, per
+  docs/interview/05-concurrency-and-correctness.md, section C.
 """
 
 from __future__ import annotations
@@ -71,3 +76,13 @@ def evaluate_strategy(strategy_id: int) -> None:
         ],
         ignore_conflicts=True,
     )
+    evaluation = StrategyEvaluation.objects.get(
+        strategy=strategy, candle_open_time=candles[-1].open_time
+    )
+    if evaluation.triggered:
+        # Local import: apps/signals/services.py doesn't import this module, so this isn't a
+        # cycle — kept local anyway so apps/market and apps/strategy's own test suites never
+        # need apps/signals importable just to exercise ingestion/evaluation in isolation.
+        from cryptovira.apps.signals.services import record_signal
+
+        record_signal(evaluation)

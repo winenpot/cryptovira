@@ -45,6 +45,7 @@ app.conf.update(
     task_routes={
         "cryptovira.apps.market.tasks.*": {"queue": "market"},
         "cryptovira.apps.strategy.tasks.*": {"queue": "strategy"},
+        "cryptovira.apps.signals.tasks.*": {"queue": "notifications"},
         "cryptovira.apps.brokers.tasks.*": {"queue": "orders"},
     },
     # One entry per interval *cadence*, not per (currency, interval) pair — each tick fans out

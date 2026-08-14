@@ -4,11 +4,13 @@ import itertools
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
 from cryptovira.apps.accounts.models import User
 from cryptovira.apps.market.models import Candle, Currency, Interval
+from cryptovira.apps.signals.models import Signal
 from cryptovira.apps.strategy import tasks
 from cryptovira.apps.strategy.models import Strategy, StrategyEvaluation
 
@@ -125,6 +127,51 @@ def test_evaluate_strategy_is_idempotent_under_redelivery(eager_celery: None) ->
     tasks.evaluate_strategy.delay(strategy.id)  # does not raise on the repeated row
 
     assert StrategyEvaluation.objects.filter(strategy=strategy).count() == 1
+
+
+def test_evaluate_strategy_records_a_signal_when_triggered(eager_celery: None) -> None:
+    """Step 5's entry point into Step 4's task: a triggered evaluation must result in exactly
+    one `Signal` — see apps/signals/services.py::record_signal for the transaction/idempotency
+    mechanics; this test is the cross-app proof that evaluate_strategy actually calls it."""
+    currency = _currency()
+    _make_candles(currency, 5)
+    strategy = _strategy(currency, ALWAYS_TRUE_CONFIG)
+
+    tasks.evaluate_strategy.delay(strategy.id)
+
+    evaluation = StrategyEvaluation.objects.get(strategy=strategy)
+    assert Signal.objects.filter(evaluation=evaluation).count() == 1
+
+
+def test_evaluate_strategy_does_not_record_a_signal_when_not_triggered(eager_celery: None) -> None:
+    currency = _currency()
+    _make_candles(currency, 5)
+    strategy = _strategy(currency, NEVER_TRUE_CONFIG)
+
+    tasks.evaluate_strategy.delay(strategy.id)
+
+    assert Signal.objects.count() == 0
+
+
+def test_evaluate_strategy_redelivery_still_yields_exactly_one_signal(
+    eager_celery: None, django_capture_on_commit_callbacks: Any
+) -> None:
+    """The full cross-app idempotency chain, not just `StrategyEvaluation`'s own: redelivering
+    the whole `evaluate_strategy` task — the realistic failure this codebase designs around,
+    per `task_acks_late` — must still land exactly one `Signal`, and still (re-)schedule
+    notification dispatch both times (see record_signal's own redelivery test for why that's
+    deliberate, not a bug)."""
+    currency = _currency()
+    _make_candles(currency, 5)
+    strategy = _strategy(currency, ALWAYS_TRUE_CONFIG)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        tasks.evaluate_strategy.delay(strategy.id)
+    with django_capture_on_commit_callbacks(execute=True):
+        tasks.evaluate_strategy.delay(strategy.id)  # redelivered
+
+    evaluation = StrategyEvaluation.objects.get(strategy=strategy)
+    assert Signal.objects.filter(evaluation=evaluation).count() == 1
 
 
 def test_fan_out_evaluate_strategies_dispatches_only_active_matching_interval(
