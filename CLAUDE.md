@@ -6,10 +6,10 @@ Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 This repo holds **two codebases**:
 
-| Path            | What it is                                                                       |
-| --------------- | -------------------------------------------------------------------------------- |
-| repo root       | The **active rewrite** — Python 3.14 / Django 6.1 / uv. Everything new goes here. |
-| `old-version/`  | The 2019 Django monolith, **reference only**. Not built, tested, linted, or imported. |
+| Path           | What it is                                                                            |
+| -------------- | ------------------------------------------------------------------------------------- |
+| repo root      | The **active rewrite** — Python 3.14 / Django 6.1 / uv. Everything new goes here.     |
+| `old-version/` | The 2019 Django monolith, **reference only**. Not built, tested, linted, or imported. |
 
 `old-version/` is the behavioural specification for features not yet ported. Read it to learn what
 the system did; never import from it, never "fix" it, never add it to a lint/type/test path (it is

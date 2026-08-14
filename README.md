@@ -62,6 +62,16 @@ docker compose up --build     # web + worker + beat + db + rabbitmq + redis
 
 RabbitMQ's management UI is at <http://localhost:15672> (`cryptovira` / `cryptovira`).
 
+Create an admin user (interactive — type the password yourself, don't script it):
+
+```bash
+docker compose run --rm web python manage.py createsuperuser
+```
+
+Create one bootstrap superuser this way, then give each real staff member their own named
+account with only the permissions they need (`/admin/` → Users → Permissions) rather than
+sharing `is_superuser` credentials — it bypasses every permission check.
+
 ---
 
 ## Everyday commands
