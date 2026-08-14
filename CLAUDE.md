@@ -73,6 +73,7 @@ src/cryptovira/
   urls.py                  # root URLconf: /healthz, /readyz, /admin/, /api/v1/, /api/docs/
   api_v1.py                # aggregates each app's api/urls.py under the v1 namespace
   apps/common/             # health checks and shared base pieces
+  apps/accounts/           # User model, JWT auth, /api/v1/accounts/*
 tests/                     # pytest suite, mirrors src/; `integration` marker for service-backed tests
 docker/                    # Dockerfile (multi-stage) + entrypoint.sh (web|worker|beat|migrate)
 compose.yaml               # db (Postgres 18), rabbitmq (4.x), redis (8.x), web, worker, beat
@@ -120,3 +121,7 @@ turns a transient database blip into a restart loop.
 - Comments explain **why**, not what. The docstrings in `config.py`, `celery.py`, and
   `apps/common/views.py` are the house style: state the trade-off, name the failure mode avoided.
 - Migrations are reviewed like code; never edit an applied migration.
+- `AUTH_USER_MODEL = "accounts.User"` is now locked in — Django cannot swap the user model once
+  any migration has been applied against a real database. If a fresh local dev database ever
+  drifts from the model state (stale local `migrate` runs, a rebased branch), `docker compose
+  down -v` and re-`migrate` rather than fighting the migration graph; it's disposable local data.

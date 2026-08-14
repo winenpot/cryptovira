@@ -10,12 +10,20 @@ from collections.abc import Iterator
 
 import pytest
 from django.test import Client
+from rest_framework.test import APIClient
 
 
 @pytest.fixture
 def client() -> Client:
     """Unauthenticated Django test client."""
     return Client()
+
+
+@pytest.fixture
+def api_client() -> APIClient:
+    """Unauthenticated DRF test client — use this (not `client`) for /api/v1/ endpoints so
+    responses are parsed as DRF `Response` objects with `.data` available."""
+    return APIClient()
 
 
 @pytest.fixture

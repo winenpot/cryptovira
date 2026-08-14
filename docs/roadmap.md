@@ -19,11 +19,22 @@ Runnable, typed, tested, containerised skeleton. No domain code.
 - `/healthz` + `/readyz`, structlog JSON logging, DRF + drf-spectacular mounted at `/api/v1/`
 - Ruff, mypy (strict), pytest, pre-commit with gitleaks; GitHub Actions CI/CD
 
-## Step 2 — Accounts and API surface
+## Step 2 — Accounts and API surface ✅ done
 
-- Custom `User` model (get this in *before* the first real migration — it cannot be retrofitted)
-- Token/JWT authentication, permissions, throttling; OpenAPI schema published from the code
-- Test fixtures and factories; the first `integration`-marked database tests
+Thin identity model, JWT auth, and the API surface to register/login/refresh/logout/view-profile.
+Everything Telegram/referral/payment-shaped from the old `User` model stays out — see
+[ADR 0005](adr/0005-custom-user-model.md).
+
+- Custom `User` (`accounts.User`): `AbstractBaseUser` + `PermissionsMixin`, email as
+  `USERNAME_FIELD` with a real DB-level `unique=True`, `uuid` as the public identifier
+- JWT via `djangorestframework-simplejwt`: short-lived access tokens, rotating refresh tokens
+  with blacklisting on rotation and on explicit logout
+- `register/`, `token/`, `token/refresh/`, `token/verify/`, `logout/`, `me/` — scoped throttles
+  on `register`/`token` (separate from the global anon rate); OpenAPI schema already covers them
+  via drf-spectacular, nothing extra needed
+- 53 tests: manager/model unit tests, full auth-flow integration tests (register → login →
+  refresh → logout, including that a *blacklisted refresh token* still leaves the already-issued
+  *access token* valid until it expires — the concrete shape of "JWT revocation is hard")
 
 ## Step 3 — Market data domain
 

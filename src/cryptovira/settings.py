@@ -35,12 +35,16 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # third party
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "django_celery_results",
     "django_structlog",
     # local
     "cryptovira.apps.common",
+    "cryptovira.apps.accounts",
 ]
+
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -113,13 +117,22 @@ STORAGES = {
 REST_FRAMEWORK: dict[str, Any] = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # Session auth stays enabled so the browsable API and admin keep working with a
+        # logged-in cookie session; API clients are expected to use JWT.
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.NamespaceVersioning",
     "DEFAULT_VERSION": "v1",
     "ALLOWED_VERSIONS": ["v1"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "user": "1000/hour"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "1000/hour",
+        # Scoped throttles for the auth endpoints specifically — see apps/accounts/api/throttles.py
+        "registration": "20/hour",
+        "login": "20/hour",
+    },
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
 }
 
@@ -128,6 +141,22 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+}
+
+# ---------------------------------------------------------------- JWT (simplejwt)
+from datetime import timedelta  # noqa: E402
+
+SIMPLE_JWT: dict[str, Any] = {
+    # Short-lived access token limits the exposure window of a stolen one; the refresh
+    # token is what actually needs revocation, hence rotation + blacklisting below.
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "uuid",
+    "USER_ID_CLAIM": "sub",
 }
 
 # ---------------------------------------------------------------- Celery / RabbitMQ

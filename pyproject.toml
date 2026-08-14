@@ -9,13 +9,15 @@ classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "django==6.1.*",
     "djangorestframework>=3.18",
+    "djangorestframework-simplejwt>=5.5",
     "drf-spectacular>=0.30",
     "psycopg[binary,pool]>=3.3",
     "dj-database-url>=3.1",
     "pydantic-settings>=2.15",
     # Beat schedule lives in code (see src/cryptovira/celery.py), not in django-celery-beat:
     # that package still pins django<6.1, and a version-controlled schedule beats a DB one.
-    "celery[amqp]>=5.6",
+    # amqp/kombu (the RabbitMQ transport) are core deps of celery now, not an extra.
+    "celery>=5.6",
     "django-celery-results>=2.6",
     "redis>=8.1",
     "structlog>=26.1",
@@ -85,7 +87,16 @@ select = [
     "TID",  # tidy imports
 ]
 ignore = [
-    "S101",  # assert: pytest uses it
+    "S101",   # assert: pytest uses it
+    # Django/DRF define config through class attributes read by the framework, never mutated
+    # in place: `permission_classes`, `throttle_classes`, serializer `Meta.fields`, Django's own
+    # `MIDDLEWARE`/`INSTALLED_APPS`. RUF012's mutable-default concern is real for dataclasses;
+    # here it would mean ClassVar-annotating nearly every view and serializer for no actual bug.
+    "RUF012",
+    # Framework override methods (view/serializer/admin hooks) must match the parent's call
+    # signature even when a given override doesn't use every parameter — that's Liskov
+    # substitution, not dead code. ARG001 (plain functions) stays enabled.
+    "ARG002",
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -6,8 +6,9 @@ so adding an app is a one-line change here rather than an edit to the root URLco
 
 from __future__ import annotations
 
-from django.urls import URLPattern, URLResolver
+from django.urls import URLPattern, URLResolver, include, path
 
 urlpatterns: list[URLPattern | URLResolver] = [
+    path("accounts/", include("cryptovira.apps.accounts.api.urls")),
     # path("market/", include("cryptovira.apps.market.api.urls")),
 ]
