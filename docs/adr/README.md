@@ -17,3 +17,4 @@ add a `Superseded by` line to the old one.
 | [0007](0007-market-data-source-interface.md)                 | MarketDataSource as a Protocol, httpx-backed                                      | Accepted |
 | [0008](0008-strategy-config-validation.md)                   | Strategy config: pydantic + full_clean, AND-only, explicit operators              | Accepted |
 | [0009](0009-signal-idempotency-and-notification-delivery.md) | Signal idempotency (OneToOneField), on_commit dispatch, retry/backoff/dead-letter | Accepted |
+| [0010](0010-backtest-forward-return-proxy.md)                | Backtest results as a side-agnostic forward-return proxy                          | Accepted |

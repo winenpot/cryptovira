@@ -124,7 +124,7 @@ broker-level redelivery every task since step 3 already had. See
   delivery and the corrected exponential backoff — see
   [interview module 05](interview/05-concurrency-and-correctness.md)
 
-## Step 5.5 — Backtesting
+## Step 5.5 — Backtesting ✅ done
 
 Not in the original 8-step plan — noticed missing during step 5 planning.
 `old-version/core/apps/market/models/backtest.py` is a real, substantial old feature (a `Backtest`
@@ -133,14 +133,34 @@ with no slot anywhere above. Depends only on steps 3–4 (`Candle` history, the 
 engine), not on broker execution/billing/production hardening — slotted in here, right after
 signals/notifications, rather than at the end, since it's ready to build as soon as step 5 lands
 and there's no reason to make it wait behind steps 6–8. Numbered 5.5 rather than renumbering
-steps 6–8, which ADRs/interview modules already reference by number.
+steps 6–8, which ADRs/interview modules already reference by number. See
+[ADR 0010](adr/0010-backtest-forward-return-proxy.md).
 
-- Replay a `Strategy` against historical `Candle` data over a date range, reusing
-  `apps/strategy/engine.py` unchanged (it already takes a plain `numpy` array — a backtest is just
-  a different caller than `evaluate_strategy`, not a reason to change the pure layer)
-- Progress tracking and a results summary (win rate, total R/R) — old system's `Backtest.progress`/
-  `total_r_r`/`total_position_count` fields are the behavioral spec, not the schema to copy
-  verbatim (no CSV/image report generation carried forward without a concrete consumer)
+- A new `apps/backtesting` app, one model (`Backtest`) and one task (`run_backtest`) — replays a
+  `Strategy` against historical `Candle` data over a date range, reusing `apps/strategy/engine.py`
+  unchanged (a backtest is just a different caller than `evaluate_strategy`, walking a rolling
+  last-`HISTORY_CANDLE_COUNT`-candle window per historical candle instead of one live "now")
+- The old system's win-rate/`total_r_r` came from `side`/stop-loss/take-profit fields that don't
+  exist anywhere in `StrategyConfig` (ADR 0008) — reproducing them verbatim would mean pulling a
+  position model into Step 4's schema two steps ahead of the roadmap. Instead: a side-agnostic
+  **forward-return proxy** — on each trigger, the close-to-close % move `horizon_candles` later;
+  `win_rate`/`total_forward_return` aggregate it, `scored_trigger_count` (tracked separately from
+  `trigger_count`) excludes triggers too close to `end_time` to have real forward data, the same
+  "don't fabricate a result from missing data" principle `InsufficientDataError` already applies
+  at the other edge of a candle window
+- Progress tracking via periodic `Backtest.progress` writes (capped to ~100 DB writes regardless
+  of range size, not one per candle as the old system did); `/admin/`-only surface (no API,
+  matching steps 3–5's precedent), with a "Run backtest" action reusing `run_backtest` itself —
+  the same shape as `NotificationDelivery`'s "Retry now" (ADR 0009)
+- Its own `backtesting` Celery queue, not `strategy` — a long-range backtest is genuinely heavy
+  and open-ended; sharing `strategy`'s queue would risk delaying time-sensitive live evaluation
+  ticks behind it, the same reasoning `orders` already gets its own queue for
+- 6 new tests (a growth-rate candle fixture makes forward-return assertions exact rather than
+  just sign-checked, plus the end_time/no-candles failure paths and the tail-scoring-exclusion
+  case); no new idempotency mechanism — unlike steps 3–5, a redelivered `run_backtest` simply
+  recomputes and overwrites the same row's results, which is correct for a rerun rather than a
+  duplicate side effect to guard against — see
+  [interview module 05.5](interview/05.5-backtesting.md)
 
 ## Step 6 — Broker execution
 

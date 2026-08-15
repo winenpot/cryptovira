@@ -47,6 +47,10 @@ app.conf.update(
         "cryptovira.apps.strategy.tasks.*": {"queue": "strategy"},
         "cryptovira.apps.signals.tasks.*": {"queue": "notifications"},
         "cryptovira.apps.brokers.tasks.*": {"queue": "orders"},
+        # Its own queue, not "strategy": a backtest over a long date range is a genuinely
+        # heavy, long-running task (potentially thousands of candles), and sharing the
+        # `strategy` queue would risk delaying time-sensitive live evaluation ticks behind it.
+        "cryptovira.apps.backtesting.tasks.*": {"queue": "backtesting"},
     },
     # One entry per interval *cadence*, not per (currency, interval) pair — each tick fans out
     # to every active Currency itself (see apps/market/tasks.py), so adding or deactivating a

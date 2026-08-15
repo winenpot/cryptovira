@@ -14,6 +14,7 @@ same activity as understanding the code.
 | [03 — Data modelling & the ORM](03-data-modelling-and-the-orm.md)   | Step 3       | Abstract base models, DB idempotency, `on_delete`, `Protocol` interfaces |
 | [04 — Strategy engine](04-strategy-engine.md)                       | Step 4       | Pure functions, pydantic-validated config, operator semantics, variance  |
 | [05 — Concurrency & correctness](05-concurrency-and-correctness.md) | Step 5–6     | Retries vs redelivery, idempotency, on_commit, at-least-once delivery    |
+| [05.5 — Backtesting](05.5-backtesting.md)                           | Step 5.5     | Replay vs. live evaluation, proxy metrics, honest scope limits, queues   |
 
 ## How to use them
 

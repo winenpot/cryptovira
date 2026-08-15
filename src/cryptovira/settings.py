@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "cryptovira.apps.market",
     "cryptovira.apps.strategy",
     "cryptovira.apps.signals",
+    "cryptovira.apps.backtesting",
 ]
 
 AUTH_USER_MODEL = "accounts.User"

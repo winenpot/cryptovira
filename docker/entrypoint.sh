@@ -24,7 +24,7 @@ case "${role}" in
   worker)
     exec celery -A cryptovira worker \
       --loglevel="${CELERY_LOG_LEVEL:-info}" \
-      --queues="${CELERY_QUEUES:-default,market,strategy,orders,notifications}" \
+      --queues="${CELERY_QUEUES:-default,market,strategy,orders,notifications,backtesting}" \
       --concurrency="${CELERY_CONCURRENCY:-4}"
     ;;
   beat)
